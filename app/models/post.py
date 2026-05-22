@@ -1,3 +1,4 @@
+from __future__ import annotations
 import uuid
 import enum
 from sqlalchemy import String, Text, ForeignKey, Enum
