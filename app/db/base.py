@@ -18,10 +18,3 @@ class TimestampMixin:
         onupdate=func.now(),
         nullable=False,
     )
-
-
-# Import all models here so Alembic can find them
-from app.models.user import User          # noqa: F401, E402
-from app.models.post import Post          # noqa: F401, E402
-from app.models.schedule import Schedule  # noqa: F401, E402
-from app.models.post_log import PostLog   # noqa: F401, E402

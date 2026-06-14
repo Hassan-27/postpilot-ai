@@ -82,6 +82,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from sqlalchemy import pool
 from alembic import context
 from app.db.base import Base
+import app.db.init_db  # noqa: F401 — ensures all models are registered
 
 config = context.config
 fileConfig(config.config_file_name)
