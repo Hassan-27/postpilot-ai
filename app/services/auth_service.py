@@ -1,3 +1,4 @@
+import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.models.user import User
@@ -10,6 +11,14 @@ logger = get_logger(__name__)
 
 async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
     result = await db.execute(select(User).where(User.email == email))
+    return result.scalar_one_or_none()
+
+async def get_user_by_id(db: AsyncSession, user_id: str) -> User | None:
+    try:
+        uid = uuid.UUID(user_id)
+    except ValueError:
+        return None
+    result = await db.execute(select(User).where(User.id == uid))
     return result.scalar_one_or_none()
 
 
