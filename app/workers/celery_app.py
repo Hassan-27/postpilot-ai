@@ -1,5 +1,6 @@
 from celery import Celery
 from app.core.config import get_settings
+from celery.schedules import crontab
 
 settings = get_settings()
 
@@ -20,3 +21,10 @@ celery_app.conf.update(
     task_acks_late=True,
     worker_prefetch_multiplier=1,
 )
+
+celery_app.conf.beat_schedule = {
+    "check-scheduled-posts-every-minute": {
+        "task": "tasks.check_scheduled_posts",
+        "schedule": crontab(minute="*"),  # every minute
+    },
+}

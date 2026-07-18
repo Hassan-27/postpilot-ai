@@ -5,7 +5,6 @@ from sqlalchemy import String, Text, ForeignKey, Enum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from app.db.base import Base, TimestampMixin
-from app.models.post_log import PostLog
 from app.models.schedule import Schedule
 from app.models.user import User
 

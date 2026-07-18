@@ -4,7 +4,6 @@ from sqlalchemy import Text, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from app.db.base import Base, TimestampMixin
-from app.models.post import Post
 
 
 class PostLog(Base, TimestampMixin):

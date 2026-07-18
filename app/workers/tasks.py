@@ -1,25 +1,40 @@
 import asyncio
+import uuid
+import app.db.init_db  # noqa: F401
 from app.workers.celery_app import celery_app
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
 
-def run_async(coro):
-    """Helper to run async functions inside sync Celery tasks."""
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+async def _publish_post(post_id: str):
+    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+    from app.models.post import Post, PostStatus
+    from sqlalchemy import select
+    from app.core.config import get_settings
+
+    settings = get_settings()
+
+    # Create a fresh engine per task — avoids event loop conflicts
+    engine = create_async_engine(settings.DATABASE_URL, echo=False)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+
     try:
-        return loop.run_until_complete(coro)
+        async with session_factory() as db:
+            result = await db.execute(
+                select(Post).where(Post.id == uuid.UUID(post_id))
+            )
+            post = result.scalar_one_or_none()
+
+            if not post:
+                logger.error(f"Post {post_id} not found")
+                return
+
+            post.status = PostStatus.PUBLISHED
+            await db.commit()
+            logger.info(f"Post {post_id} marked as published")
     finally:
-        loop.close()
-
-
-@celery_app.task(name="tasks.test_task")
-def test_task(message: str):
-    """Simple task to verify Celery is working."""
-    logger.info(f"Test task received: {message}")
-    return f"Processed: {message}"
+        await engine.dispose()
 
 
 @celery_app.task(
@@ -29,32 +44,51 @@ def test_task(message: str):
     name="tasks.publish_post",
 )
 def publish_post_task(self, post_id: str):
-    """Background task to publish a post. Full implementation in Step 10."""
     try:
         logger.info(f"Starting publish task for post {post_id}")
-        run_async(_publish_post(post_id))
+        asyncio.run(_publish_post(post_id))
         logger.info(f"Post {post_id} published successfully")
     except Exception as exc:
         logger.error(f"Failed to publish post {post_id}: {exc}")
         raise self.retry(exc=exc)
 
 
-async def _publish_post(post_id: str):
-    from app.db.session import AsyncSessionLocal
-    from app.models.post import Post, PostStatus
-    from sqlalchemy import select
-    import uuid
+async def _check_and_enqueue_due_posts():
+    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+    from app.services.scheduler_service import get_due_posts, mark_schedule_processed
+    from app.core.config import get_settings
 
-    async with AsyncSessionLocal() as db:
-        result = await db.execute(
-            select(Post).where(Post.id == uuid.UUID(post_id))
-        )
-        post = result.scalar_one_or_none()
+    settings = get_settings()
+    engine = create_async_engine(settings.DATABASE_URL, echo=False)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
-        if not post:
-            logger.error(f"Post {post_id} not found")
-            return
+    try:
+        async with session_factory() as db:
+            due_schedules = await get_due_posts(db)
 
-        post.status = PostStatus.PUBLISHED
-        await db.commit()
-        logger.info(f"Post {post_id} marked as published")
+            if not due_schedules:
+                logger.info("No posts due for publishing")
+                return
+
+            logger.info(f"Found {len(due_schedules)} post(s) due for publishing")
+
+            for schedule in due_schedules:
+                publish_post_task.delay(str(schedule.post_id))
+                await mark_schedule_processed(db, schedule.id)
+
+            await db.commit()
+            logger.info(f"Enqueued {len(due_schedules)} publish task(s)")
+    finally:
+        await engine.dispose()
+
+
+@celery_app.task(name="tasks.check_scheduled_posts")
+def check_scheduled_posts():
+    logger.info("Checking for scheduled posts due for publishing...")
+    asyncio.run(_check_and_enqueue_due_posts())
+
+
+@celery_app.task(name="tasks.test_task")
+def test_task(message: str):
+    logger.info(f"Test task received: {message}")
+    return f"Processed: {message}"
