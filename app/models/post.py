@@ -43,7 +43,7 @@ class Post(Base, TimestampMixin):
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="posts")
     schedule: Mapped["Schedule"] = relationship("Schedule", back_populates="post", uselist=False)
-    logs: Mapped[list["PostLog"]] = relationship("PostLog", back_populates="post")
+    logs: Mapped[list["PostLog"]] = relationship("PostLog", back_populates="post") # type: ignore[name-defined]
 
     def __repr__(self) -> str:
         return f"<Post {self.id} [{self.status}]>"

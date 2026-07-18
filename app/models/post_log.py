@@ -24,7 +24,7 @@ class PostLog(Base, TimestampMixin):
     detail: Mapped[str] = mapped_column(Text, nullable=True)
 
     # Relationship
-    post: Mapped["Post"] = relationship("Post", back_populates="logs")
+    post: Mapped["Post"] = relationship("Post", back_populates="logs")  # type: ignore[name-defined]
 
     def __repr__(self) -> str:
         return f"<PostLog post={self.post_id} event={self.event}>"
