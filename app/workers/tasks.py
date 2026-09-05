@@ -8,19 +8,20 @@ logger = get_logger(__name__)
 
 
 async def _publish_post(post_id: str):
-    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
     from app.models.post import Post, PostStatus
+    from app.models.post_log import PostLog
+    from app.services.discord_service import publish_to_discord
     from sqlalchemy import select
     from app.core.config import get_settings
 
     settings = get_settings()
-
-    # Create a fresh engine per task — avoids event loop conflicts
     engine = create_async_engine(settings.DATABASE_URL, echo=False)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
     try:
         async with session_factory() as db:
+            # Fetch the post
             result = await db.execute(
                 select(Post).where(Post.id == uuid.UUID(post_id))
             )
@@ -30,12 +31,30 @@ async def _publish_post(post_id: str):
                 logger.error(f"Post {post_id} not found")
                 return
 
-            post.status = PostStatus.PUBLISHED
+            # Publish to Discord
+            success = await publish_to_discord(post.content)
+
+            if success:
+                post.status = PostStatus.PUBLISHED
+                log = PostLog(
+                    post_id=post.id,
+                    event="published",
+                    detail="Published to Discord successfully",
+                )
+            else:
+                post.status = PostStatus.FAILED
+                log = PostLog(
+                    post_id=post.id,
+                    event="failed",
+                    detail="Discord webhook failed",
+                )
+
+            db.add(log)
             await db.commit()
-            logger.info(f"Post {post_id} marked as published")
+            logger.info(f"Post {post_id} status updated to {post.status}")
+
     finally:
         await engine.dispose()
-
 
 @celery_app.task(
     bind=True,

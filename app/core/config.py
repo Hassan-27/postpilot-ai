@@ -28,6 +28,9 @@ class Settings(BaseSettings):
 
     # ── Gemini ────────────────────────────────────────────
     GEMINI_API_KEY: str
+    
+    # ── Discord ────────────────────────────────────────────
+    DISCORD_WEBHOOK_URL: str
 
     model_config = SettingsConfigDict(
         env_file=".env",
