@@ -8,6 +8,8 @@ from app.schemas.post import PostCreate, PostUpdate, PostResponse
 from app.services import post_service
 from app.schemas.schedule import ScheduleCreate, ScheduleResponse
 from app.services import scheduler_service
+from app.schemas.post import PostGenerateRequest, PostGenerateResponse
+from app.services.ai.gemini_service import generate_linkedin_post
 
 router = APIRouter(prefix="/posts", tags=["Posts"])
 
@@ -98,3 +100,35 @@ async def publish_post_now(
     publish_post_task.delay(str(post_id))
 
     return post
+
+
+@router.post("/generate", response_model=PostGenerateResponse)
+async def generate_post(
+    data: PostGenerateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Generate AI content for a LinkedIn post using LangChain + Gemini."""
+    try:
+        content = await generate_linkedin_post(
+            topic=data.topic,
+            tone=data.tone,
+            audience=data.audience,
+            length=data.length,
+        )
+
+        post_id = None
+
+        # Optionally save as a draft post
+        if data.save_as_draft:
+            post = await post_service.create_post(
+                db,
+                current_user.id,
+                PostCreate(content=content, ai_generated=True),
+            )
+            post_id = post.id
+
+        return PostGenerateResponse(content=content, post_id=post_id)
+
+    except ValueError as e:
+        raise HTTPException(status_code=500, detail=str(e))
